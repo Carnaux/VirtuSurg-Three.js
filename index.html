@@ -1,51 +1,29 @@
-<html lang="en">
-    <head>
-        <title>Ammo.js softbody volume demo 2</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-        <style>
-            body {
-                color: #61443e;
-                font-family:Monospace;
-                font-size:13px;
-                text-align:center;
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>My first three.js app</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <!-->script src="leap-1.js"></script>
 
-                background-color: #bfd1e5;
-                margin: 0px;
-                overflow: hidden;
-            }
+    <script src="leapP.js"></script-->
+    <script src="three.js"></script>
+    <script src="j1.js"></script>
+    <script src="TrackballControls.js"></script>
+    <script src="threexdomevents.js"></script>
 
-            #info {
-                position: absolute;
-                top: 0px; width: 100%;
-                padding: 5px;
-            }
-
-            a {
-
-                color: #a06851;
-            }
-            #bt{
-              position: absolute;
-              top: 0%;
-              left: 80%;
-            }
-
-        </style>
-    </head>
-    <body>
-		<div id="info">Ammo.js soft body volume demo 2<br>Click to throw a ball</div>
-        <div id="container"><br /><br /><br /><br /><br />Loading...</div>
-
-		      <script src="ammo.js"></script>
-        <script src="three.min.js"></script>
-        <script src="OrbitControls.js"></script>
-        <script src="Detector.js"></script>
-        <script src="stats.min.js"></script>
-        <script src="j1.js"></script>
-
-
-      <button id="bt" onclick="javascript:active()">ATIVAR</button>
-
-    </body>
+    <div id="ferramenta">
+      <p id="title">Ferramenta:</p>
+      <p id="tool"></p>
+    </div>
+  </body>
 </html>

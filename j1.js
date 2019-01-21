@@ -1,636 +1,472 @@
-Ammo().then(function(Ammo) {
-
-  // Detects webgl
-        if ( ! Detector.webgl ) {
-            Detector.addGetWebGLMessage();
-            document.getElementById( 'container' ).innerHTML = "";
-        }
-
-        // - Global variables -
-        var DISABLE_DEACTIVATION = 4;
-        var e;
-  // Graphics variables
-        var container, stats;
-        var camera, controls, scene, renderer;
-        var textureLoader;
-        var clock = new THREE.Clock();
-        var clickRequest = false;
-        var mouseCoords = new THREE.Vector2();
-        var raycaster = new THREE.Raycaster();
-        var ballMaterial = new THREE.MeshPhongMaterial( { color: 0x202020 } );
-        var pos = new THREE.Vector3();
-        var poss = new THREE.Vector3();
-        var quat = new THREE.Quaternion();
-        var quat1 = new THREE.Quaternion();
-        var mouse = { x: 0, y: 0, z: 0 };
-        var cursor;
-        var ps;
-        var enablecursor;
-        var keyboard = [];
-        var mov =  new Ammo.btVector3( 0, 0, 0 );
-        var time = 0;
-        // Physics variables
-        var gravityConstant = -9.8;
-        var collisionConfiguration;
-        var dispatcher;
-        var broadphase;
-        var solver;
-        var physicsWorld;
-        var rigidBodies = [];
-        var softBodies = [];
-        var margin = 0.05;
-        var hinge;
-        var transformAux1 = new Ammo.btTransform();
-        var softBodyHelpers = new Ammo.btSoftBodyHelpers();
-        var armMovement = 0;
-        //user data
-          var movs =  new Ammo.btVector3( 1, 0, 0 );
-          var tran = new Ammo.btTransform();
-          var gall;
-        // - Main code -
-
-        init();
-        animate();
-
-
-        // - Functions -
-        function active() {
-          e = true;
-        }
-
-        function init() {
-
-          initGraphics();
-
-          initPhysics();
-
-          createObjects();
-
-          initInput();
-
-        }
-
-
-
-        function initGraphics() {
-
-              document.addEventListener( 'mousemove', onDocumentMouseMove, false );
-              container = document.getElementById( 'container' );
-
-              camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 0.2, 2000 );
-
-              scene = new THREE.Scene();
-
-              camera.position.x = -7;
-              camera.position.y = 5;
-              camera.position.z =  8;
-
-              controls = new THREE.OrbitControls( camera );
-              controls.target.y = 2;
-
-              renderer = new THREE.WebGLRenderer();
-              renderer.setClearColor( 0xbfd1e5 );
-              renderer.setPixelRatio( window.devicePixelRatio );
-              renderer.setSize( window.innerWidth, window.innerHeight );
-              renderer.shadowMap.enabled = true;
-
-              textureLoader = new THREE.TextureLoader();
-
-              var ambientLight = new THREE.AmbientLight( 0x404040 );
-              scene.add( ambientLight );
-
-              var light = new THREE.DirectionalLight( 0xffffff, 1 );
-              light.position.set( -10, 10, 5 );
-              light.castShadow = true;
-              var d = 20;
-              light.shadowCameraLeft = -d;
-              light.shadowCameraRight = d;
-              light.shadowCameraTop = d;
-              light.shadowCameraBottom = -d;
-
-              light.shadowCameraNear = 2;
-              light.shadowCameraFar = 50;
-
-              light.shadowMapWidth = 1024;
-              light.shadowMapHeight = 1024;
-
-              light.shadowDarkness = 0.65;
-              scene.add( light );
-
-
-              container.innerHTML = "";
-
-              container.appendChild( renderer.domElement );
-
-              stats = new Stats();
-              stats.domElement.style.position = 'absolute';
-              stats.domElement.style.top = '0px';
-              container.appendChild( stats.domElement );
-
-              //
-
-              window.addEventListener( 'resize', onWindowResize, false );
-
-        }
-
-        function initPhysics() {
-              // Physics configuratio
-              collisionConfiguration = new Ammo.btSoftBodyRigidBodyCollisionConfiguration();
-              dispatcher = new Ammo.btCollisionDispatcher( collisionConfiguration );
-              broadphase = new Ammo.btDbvtBroadphase();
-              solver = new Ammo.btSequentialImpulseConstraintSolver();
-              softBodySolver = new Ammo.btDefaultSoftBodySolver();
-              physicsWorld = new Ammo.btSoftRigidDynamicsWorld( dispatcher, broadphase, solver, collisionConfiguration, softBodySolver);
-              physicsWorld.setGravity( new Ammo.btVector3( 0, gravityConstant, 0 ) );
-              physicsWorld.getWorldInfo().set_m_gravity( new Ammo.btVector3( 0, gravityConstant, 0 ) );
-
-           }
-
-        function processGeometry( bufGeometry ) {
-
-            // Obtain a Geometry
-            var geometry = new THREE.Geometry().fromBufferGeometry( bufGeometry );
-
-            // Merge the vertices so the triangle soup is converted to indexed triangles
-            var vertsDiff = geometry.mergeVertices();
-
-            // Convert again to BufferGeometry, indexed
-            var indexedBufferGeom = createIndexedBufferGeometryFromGeometry( geometry );
-
-            // Create index arrays mapping the indexed vertices to bufGeometry vertices
-            mapIndices( bufGeometry, indexedBufferGeom );
-
-        }
-
-        function createObjects() {
-
-            // Ground
-            pos.set( 0, - 0.5, 0 );
-            quat.set( 0, 0, 0, 1 );
-            var ground = createParalellepiped( 40, 1, 40, 0, pos, quat, new THREE.MeshPhongMaterial( { color: 0xFFFFFF } ) );
-            ground.castShadow = true;
-            ground.receiveShadow = true;
-            textureLoader.load( "../textures/grid.png", function( texture ) {
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set( 40, 40 );
-            ground.material.map = texture;
-            ground.material.needsUpdate = true;
-            } );
-
-
-            // Create soft volumes
-            var volumeMass = 15;
-
-            /*var sphereGeometry = new THREE.SphereBufferGeometry( 1.5, 40, 25 );
-            sphereGeometry.translate( 5, 5, 0 );
-            createSoftVolume( sphereGeometry, volumeMass, 250 );
-
-            var boxGeometry = new THREE.BufferGeometry().fromGeometry( new THREE.BoxGeometry( 1, 1, 5, 4, 4, 20 ) );
-            boxGeometry.translate( -2, 5, 0 );
-            createSoftVolume( boxGeometry, volumeMass, 120 );
-
-            var aa = new THREE.BufferGeometry().fromGeometry( new THREE.CylinderGeometry( 2, 2, 5, 64, 10 ) );
-            aa.translate( 8, 5, 8 );
-            createSoftVolume( aa, volumeMass, 250 );*/
-
-            //loading models
-            loader = new THREE.JSONLoader();
-            loader.load('modelos/gau.json', handle_loader);
-            function handle_loader(geometry, materials) {
-             mesh1 = new THREE.Mesh(geometry, materials);
-             var gallbladder = new THREE.BufferGeometry().fromGeometry(geometry);
-             gallbladder.scale(1,1,1);
-             gallbladder.translate( -5, 2, -8 );
-             var vec = new THREE.Vector3(-5, 2, -8);
-             gall = createSoftVolume( gallbladder, 15, 250 );
-             //gall.appendLinearJoint(new THREE.Vector3( -5, 2, -8 ));
-
-           }
-
-
-            // rigidBodies
-            pos.set( 3, 1, 0 );
-            quat.setFromAxisAngle( new THREE.Vector3( 0, 0, 1 ), 30 * Math.PI / 180 );
-            var obstacle = createParalellepiped( 10, 1, 4, 0, pos, quat, new THREE.MeshPhongMaterial( { color: 0x606060 } ) );
-            obstacle.castShadow = true;
-            obstacle.receiveShadow = true;
-
-            poss.set( -0.5, 1, 0 );
-            quat1.setFromAxisAngle( new THREE.Vector3( 0, 0, 0 ), 1);
-
-            var c = new THREE.Mesh( new THREE.BoxGeometry( 1, 1, 1, 1, 1, 1 ), new THREE.MeshPhongMaterial( { color: 0x606060 } ) );
-            c.castShadow = true;
-            c.receiveShadow = true;
-            var s = new Ammo.btBoxShape( new Ammo.btVector3( 1 * 0.5, 1 * 0.5, 1 * 0.5 ) );
-            s.setMargin( margin );
-            this.caixa = createRigidBody( c, s, 1, poss, quat1 );
-
-
-            poss.set( -5, 2, -8);
-            var b = new THREE.Mesh( new THREE.BoxGeometry( 0.1, 0.1, 0.1, 1, 1, 1 ), new THREE.MeshPhongMaterial( { color: 0x606060 } ) );
-            var s = new Ammo.btBoxShape( new Ammo.btVector3( 0.1 * 0.5, 0.1 * 0.5, 0.1 * 0.5 ) );
-            s.setMargin( margin );
-            this.a = createRigidBody( b, s, 0, poss, quat1 );
-            a.setLinearFactor(0,0,0)
-
-        }
-        function ancoras(){
-
-
-
-          /*
-          ls = new(btAlignedAlloc(sizeof(LJoint),16)) LJoint();
-          ls.cfm = 1;
-          ls.erp = 1;
-          ls.position = new Ammo.btVector3( -5, 2, -8 );
-          gall.appendLinearJoint(ls,a);*/
-
-/*
-          for(i = 0; i < 5; i++){
-
-            gall.appendAnchor(i, a, true, 0);
-          }*/
-
-        }
-
-        function createIndexedBufferGeometryFromGeometry( geometry ) {
-
-            var numVertices = geometry.vertices.length;
-            var numFaces = geometry.faces.length;
-
-            var bufferGeom = new THREE.BufferGeometry();
-            var vertices = new Float32Array( numVertices * 3 );
-            var indices = new ( numFaces * 3 > 65535 ? Uint32Array : Uint16Array )( numFaces * 3 );
-
-            for ( var i = 0; i < numVertices; i++ ) {
-
-                var p = geometry.vertices[ i ];
-
-                var i3 = i * 3;
-
-                vertices[ i3 ] = p.x;
-                vertices[ i3 + 1 ] = p.y;
-                vertices[ i3 + 2 ] = p.z;
-
-            }
-
-            for ( var i = 0; i < numFaces; i++ ) {
-
-                var f = geometry.faces[ i ];
-
-                var i3 = i * 3;
-
-                indices[ i3 ] = f.a;
-                indices[ i3 + 1 ] = f.b;
-                indices[ i3 + 2 ] = f.c;
-
-            }
-
-            bufferGeom.setIndex( new THREE.BufferAttribute( indices, 1 ) );
-            bufferGeom.addAttribute( 'position', new THREE.BufferAttribute( vertices, 3 ) );
-
-            return bufferGeom;
-        }
-
-        function isEqual( x1, y1, z1, x2, y2, z2 ) {
-            var delta = 0.000001;
-            return Math.abs( x2 - x1 ) < delta &&
-                    Math.abs( y2 - y1 ) < delta &&
-                    Math.abs( z2 - z1 ) < delta;
-        }
-
-        function mapIndices( bufGeometry, indexedBufferGeom ) {
-
-            // Creates ammoVertices, ammoIndices and ammoIndexAssociation in bufGeometry
-
-            var vertices = bufGeometry.attributes.position.array;
-            var idxVertices = indexedBufferGeom.attributes.position.array;
-            var indices = indexedBufferGeom.index.array;
-
-            var numIdxVertices = idxVertices.length / 3;
-            var numVertices = vertices.length / 3;
-
-            bufGeometry.ammoVertices = idxVertices;
-            bufGeometry.ammoIndices = indices;
-            bufGeometry.ammoIndexAssociation = [];
-
-            for ( var i = 0; i < numIdxVertices; i++ ) {
-
-                var association = [];
-                bufGeometry.ammoIndexAssociation.push( association );
-
-                var i3 = i * 3;
-
-                for ( var j = 0; j < numVertices; j++ ) {
-                    var j3 = j * 3;
-                    if ( isEqual( idxVertices[ i3 ], idxVertices[ i3 + 1 ],  idxVertices[ i3 + 2 ],
-                                  vertices[ j3 ], vertices[ j3 + 1 ], vertices[ j3 + 2 ] ) ) {
-                        association.push( j3 );
-                    }
-                }
-
-            }
-
-        }
-
-        function createSoftVolume( bufferGeom, mass, pressure ) {
-
-            processGeometry( bufferGeom );
-
-            var volume = new THREE.Mesh( bufferGeom, new THREE.MeshPhongMaterial( { color: 0xFFFFFF } ) );
-            volume.castShadow = true;
-            volume.receiveShadow = true;
-            volume.frustumCulled = false;
-            scene.add( volume );
-
-            textureLoader.load( "../textures/colors.png", function( texture ) {
-                volume.material.map = texture;
-                volume.material.needsUpdate = true;
-            } );
-
-            // Volume physic object
-
-            var volumeSoftBody = softBodyHelpers.CreateFromTriMesh(
-                physicsWorld.getWorldInfo(),
-                bufferGeom.ammoVertices,
-                bufferGeom.ammoIndices,
-                bufferGeom.ammoIndices.length / 3,
-                true );
-
-            var sbConfig = volumeSoftBody.get_m_cfg();
-            sbConfig.set_viterations( 40 );
-            sbConfig.set_piterations( 40 );
-
-            // Soft-soft and soft-rigid collisions
-            sbConfig.set_collisions( 0x11 );
-
-            // Friction
-            sbConfig.set_kDF( 0.1 );
-            // Damping
-            sbConfig.set_kDP( 0.01 );
-            // Pressure
-            sbConfig.set_kPR( pressure );
-            // Stiffness
-            volumeSoftBody.get_m_materials().at( 0 ).set_m_kLST( 0.9 );
-            volumeSoftBody.get_m_materials().at( 0 ).set_m_kAST( 0.9 );
-
-            volumeSoftBody.setTotalMass( mass, false )
-            Ammo.castObject( volumeSoftBody, Ammo.btCollisionObject ).getCollisionShape().setMargin( margin );
-            physicsWorld.addSoftBody( volumeSoftBody, 1, -1 );
-            volume.userData.physicsBody = volumeSoftBody;
-            // Disable deactivation
-            volumeSoftBody.setActivationState( 4 );
-
-            softBodies.push( volume );
-
-        }
-
-        function createParalellepiped( sx, sy, sz, mass, pos, quat, material ) {
-
-                var threeObject = new THREE.Mesh( new THREE.BoxGeometry( sx, sy, sz, 1, 1, 1 ), material );
-                var shape = new Ammo.btBoxShape( new Ammo.btVector3( sx * 0.5, sy * 0.5, sz * 0.5 ) );
-                shape.setMargin( margin );
-
-                createRigidBody( threeObject, shape, mass, pos, quat );
-
-                return threeObject;
-
-        }
-
-        function createRigidBody( threeObject, physicsShape, mass, pos, quat ) {
-
-                threeObject.position.copy( pos );
-                threeObject.quaternion.copy( quat );
-
-          var transform = new Ammo.btTransform();
-            transform.setIdentity();
-            transform.setOrigin( new Ammo.btVector3( pos.x, pos.y, pos.z ) );
-            transform.setRotation( new Ammo.btQuaternion( quat.x, quat.y, quat.z, quat.w ) );
-          var motionState = new Ammo.btDefaultMotionState( transform );
-
-          var localInertia = new Ammo.btVector3( 0, 0, 0 );
-            physicsShape.calculateLocalInertia( mass, localInertia );
-
-            var rbInfo = new Ammo.btRigidBodyConstructionInfo( mass, motionState, physicsShape, localInertia );
-            var body = new Ammo.btRigidBody( rbInfo );
-
-          threeObject.userData.physicsBody = body;
-
-          scene.add( threeObject );
-
-          if ( mass > 0 ) {
-            rigidBodies.push( threeObject );
-
-            // Disable deactivation
-            body.setActivationState( 4 );
-          }
-
-          physicsWorld.addRigidBody( body );
-
-                  return body;
-        }
-
-        function initInput() {
-
-            window.addEventListener( 'mousedown', function( event ) {
-
-                if ( ! clickRequest ) {
-
-                    mouseCoords.set(
-                        ( event.clientX / window.innerWidth ) * 2 - 1,
-                        - ( event.clientY / window.innerHeight ) * 2 + 1
-                    );
-
-                    clickRequest = true;
-
-                }
-
-            }, false );
-
-        }
-
-        function onWindowResize() {
-
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-
-            renderer.setSize( window.innerWidth, window.innerHeight );
-
-        }
-
-        function onDocumentMouseMove( event ){
-
-            // the following line would stop any other event handler from firing
-            // (such as the mouse's TrackballControls)
-            // event.preventDefault();
-
-            // update the mouse variable
-            mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-            mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-
-            var vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
-            vector.unproject( camera );
-            var dir = vector.sub( camera.position ).normalize();
-            var distance = - camera.position.z / dir.z;
-            this.ps = camera.position.clone().add( dir.multiplyScalar( distance ) );
-
-
-            var movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
-            var movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
-
-            var mox = movementX *0.05;
-            var moy = movementY *0.05;
-            caixa.activate(true);
-            caixa.setLinearVelocity(new Ammo.btVector3(ps /*mox, moy, 0.0*/) );
-          }
-
-        function animate() {
-
-            requestAnimationFrame( animate );
-
-
-
-
-
-            render();
-
-
-
-
-
-
-
-
-            stats.update();
-
-        }
-
-        function render() {
-
-          var deltaTime = clock.getDelta();
-
-          updatePhysics( deltaTime );
-
-
-
-
-
-
-            controls.update( deltaTime );
-
-            renderer.render( scene, camera );
-
-          }
-
-        function updatePhysics( deltaTime ) {
-          softBodies[0].appendAnchor( 0, a.userData.physicsBody, false, 0);
-
-
-            if(keyboard[87]){//w
-              caixa.activate(true);
-              caixa.applyCentralImpulse( new Ammo.btVector3( 0.5, 0.0, 0.0) );
-
-            }
-            if(keyboard[83]){//s
-              caixa.activate(true);
-              caixa.applyCentralImpulse( new Ammo.btVector3( -0.5, 0.0, 0.0) );
-
-            }
-            if(keyboard[65]){//a
-              caixa.activate(true);
-              caixa.applyCentralImpulse( new Ammo.btVector3( 0.0, 0.0, -0.5) );
-
-            }
-            if(keyboard[68]){//d
-              caixa.activate(true);
-              caixa.applyCentralImpulse( new Ammo.btVector3( 0.0, 0.0, 0.5) );
-            }
-
-            time++;
-              // Step world
-              physicsWorld.stepSimulation( deltaTime, 10 );
-
-              // Update soft volumes
-              for ( var i = 0, il = softBodies.length; i < il; i++ ) {
-                  var volume = softBodies[ i ];
-                  var geometry = volume.geometry;
-                  var softBody = volume.userData.physicsBody;
-                  var volumePositions = geometry.attributes.position.array;
-                  var volumeNormals = geometry.attributes.normal.array;
-                  var association = geometry.ammoIndexAssociation;
-                  var numVerts = association.length;
-                  var nodes = softBody.get_m_nodes();
-                  for ( var j = 0; j < numVerts; j ++ ) {
-
-                      var node = nodes.at( j );
-                      var nodePos = node.get_m_x();
-                      var x = nodePos.x();
-                      var y = nodePos.y();
-                      var z = nodePos.z();
-                      var nodeNormal = node.get_m_n();
-                      var nx = nodeNormal.x();
-                      var ny = nodeNormal.y();
-                      var nz = nodeNormal.z();
-
-                      var assocVertex = association[ j ];
-
-                      for ( var k = 0, kl = assocVertex.length; k < kl; k++ ) {
-                          var indexVertex = assocVertex[ k ];
-                          volumePositions[ indexVertex ] = x;
-                          volumeNormals[ indexVertex ] = nx;
-                          indexVertex++;
-                          volumePositions[ indexVertex ] = y;
-                          volumeNormals[ indexVertex ] = ny;
-                          indexVertex++;
-                          volumePositions[ indexVertex ] = z;
-                          volumeNormals[ indexVertex ] = nz;
-                      }
-                  }
-
-                  geometry.attributes.position.needsUpdate = true;
-                  geometry.attributes.normal.needsUpdate = true;
-
-              }
-
-              // Update rigid bodies
-
-
-
-              for ( var i = 0, il = rigidBodies.length; i < il; i++ ) {
-
-                var objThree = rigidBodies[ i ];
-                var objPhys = objThree.userData.physicsBody;
-              var ms = objPhys.getMotionState();
-
-              if ( ms ) {
-                  ms.getWorldTransform( transformAux1 );
-                 var p = transformAux1.getOrigin();
-                 var q = transformAux1.getRotation();
-
-
-               objThree.position.set( p.x(), p.y(), p.z() );
-               objThree.quaternion.set( q.x(), q.y(), q.z(), q.w() );
-
-
-
-
-                }
-              }
-
-        }
-
-        function keyDown() {
-          keyboard[event.keyCode] = true;
-        }
-
-        function keyUp() {
-          keyboard[event.keyCode] = false;
-        }
-
-
-        window.addEventListener('keydown', keyDown);
-        window.addEventListener('keyup', keyUp);
-
-
-  });
+var scene, camera, geometry, material, renderer, cube, group, parte1, parte2, parte3;
+var i, time = 50;
+var controls;
+var group;
+var mouse = { x: 0, y: 0, z: 0 };
+var lista1 = [];
+var lista2 = [];
+var lista3 = [];
+var coord, coord2;
+var pinca;
+var controller;
+var previousFrame;
+var hand;
+var position1;
+var movement;
+var finger;
+var f;
+var tool1, tool2, action;
+var part1posx, part1posy, part1posz;
+var pontaposx;
+var rotation1x, rotation1y, rotation1z;
+var rotation2x, rotation2y, rotation2z;
+var rotation3x, rotation3y, rotation3z;
+var corteparte1 = 0, corteparte2 = 0, corteparte3 = 0;
+var pegou = 0;
+var p;
+var clipe1 = 0;
+var clipe2 = 0;
+var clipes = 0;
+var quantidade = 5;
+var sangue1, sangue2, sangue3;
+function init(){
+scene = new THREE.Scene();
+camera = new THREE.PerspectiveCamera( 75, window.innerWidth/window.innerHeight, 0.1, 1000 );
+
+renderer = new THREE.WebGLRenderer();
+renderer.setSize( window.innerWidth, window.innerHeight );
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.BasicShadowMap;
+document.body.appendChild( renderer.domElement );
+//1.4741888702208916, y: 0.7572367496754882, z: 0.6223630532363377
+//x: 0.5224873937307228, _y: -0.5066923406948488, _z: 0.2846072645031335
+
+
+
+
+camera.position.z = 3;
+
+
+var AmbientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(AmbientLight);
+
+
+
+	var light = new THREE.HemisphereLight( 0xffffbb, 0x080820, 1 );
+	scene.add( light );
+
+
+
+  loader = new THREE.JSONLoader();
+  loader.load('gallbladder.json', handle_loader);
+  function handle_loader(geometry, materials) {
+   gallbladder = new THREE.Mesh(geometry, materials);
+
+    scene.add(gallbladder);
+  }
+
+	loader2 = new THREE.JSONLoader();
+  loader2.load('liver.json', handle_loader2);
+  function handle_loader2(geometry2, materials2) {
+   liver = new THREE.Mesh(geometry2, materials2);
+
+    scene.add(liver);
+  }
+
+	loader3 = new THREE.JSONLoader();
+  loader3.load('liga.json', handle_loader3);
+  function handle_loader3(geometry3, materials3) {
+   liga = new THREE.Mesh(geometry3, materials3);
+
+    scene.add(liga);
+  }
+	loader4 = new THREE.JSONLoader();
+  loader4.load('stomach.json', handle_loader4);
+  function handle_loader4(geometry4, materials4) {
+   stomach= new THREE.Mesh(geometry4, materials4);
+
+    scene.add(stomach);
+  }
+
+	loader5 = new THREE.JSONLoader();
+  loader5.load('pancreas.json', handle_loader5);
+  function handle_loader5(geometry5, materials5) {
+   pancreas= new THREE.Mesh(geometry5, materials5);
+
+    scene.add(pancreas);
+  }
+
+
+	 parte1 = new THREE.Mesh(
+		new THREE.CylinderGeometry( 0.08, 0.08, 0.2, 32 ),
+		new THREE.MeshBasicMaterial( {color: 0xffff00} ));
+	scene.add( parte1 );
+	parte1.rotation.z = Math.PI/2 + 0.25;
+	parte1.position.x = -1.3;
+	parte1.position.y = 1.45;
+	parte1.position.z = -0.01;
+	parte1.material.color.setRGB( 0.585, 0.800, 0.321 );
+	lista1.push(parte1);
+
+	part1posx = parte1.position.x;
+	part1posy = parte1.position.y;
+	part1posz = parte1.position.z;
+	rotation1x = parte1.rotation.x;
+	rotation1y = parte1.rotation.y;
+  rotation1z = parte1.rotation.z;
+
+	parte2 = new THREE.Mesh(
+		new THREE.CylinderGeometry( 0.08, 0.08, 0.48, 32 ),
+		new THREE.MeshBasicMaterial( {color: 0xffff00} ));
+	scene.add( parte2 );
+	parte2.rotation.z = Math.PI/2 + 0.25;
+	parte2.position.x = -0.97;
+	parte2.position.y = 1.53;
+	parte2.position.z = -0.01;
+	parte2.material.color.setRGB( 0.585, 0.200, 0.321 );
+	lista2.push(parte2);
+
+	part2posx = parte2.position.x;
+	part2posy = parte2.position.y;
+	part2posz = parte2.position.z;
+	rotation2x = parte2.rotation.x;
+	rotation2y = parte2.rotation.y;
+  rotation2z = parte2.rotation.z;
+
+	parte3 = new THREE.Mesh(
+		new THREE.CylinderGeometry( 0.08, 0.08, 0.2, 32 ),
+		new THREE.MeshBasicMaterial( {color: 0xffff00} ));
+	scene.add( parte3 );
+	parte3.rotation.z = Math.PI/2 + 0.25;
+	parte3.position.x = -0.65;
+	parte3.position.y = 1.62;
+	parte3.position.z = -0.01;
+	parte3.material.color.setRGB( 0.585, 0.800, 0.321 );
+	lista3.push(parte3);
+
+	part3posx = parte3.position.x;
+	part3posy = parte3.position.y;
+	part3posz = parte3.position.z;
+	rotation3x = parte3.rotation.x;
+	rotation3y = parte3.rotation.y;
+  rotation3z = parte3.rotation.z;
+
+ group = new THREE.Object3D();
+
+
+controlador = new THREE.Mesh(
+	new THREE.CylinderGeometry( 0.05, 0.08, 0.5, 32, 3 ),
+	new THREE.MeshBasicMaterial( {color: 0xffff00, wireframe:true} ));
+	scene.add(controlador);
+
+lista1.push(controlador);
+lista2.push(controlador);
+lista3.push(controlador);
+controlador.position.set(0, 0, 3);
+
+ponta = new THREE.Mesh(
+	new THREE.BoxGeometry( 0.02, 0.02, 0.02),
+	new THREE.MeshBasicMaterial( { color: "rgb(	182,	49,	62)" , wireframe:true} ));
+scene.add(ponta);
+ponta.position.set(0,0.26,3);
+
+scene.add(group);
+corpo = new THREE.Mesh(
+	new THREE.PlaneGeometry(10, 10),
+	new THREE.MeshBasicMaterial( {color: 0xffff00} ));
+scene.add( corpo );
+corpo.position.z = -1;
+corpo.material.color.set("rgb(255,145,145)");
+
+
+controls = new THREE.TrackballControls( camera );
+document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+
+}
+
+
+
+function onDocumentMouseMove( event )
+{
+	// the following line would stop any other event handler from firing
+	// (such as the mouse's TrackballControls)
+	// event.preventDefault();
+
+	// update the mouse variable
+	mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+	mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
+	var vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
+	vector.unproject( camera );
+	var dir = vector.sub( camera.position ).normalize();
+	var distance = - camera.position.z / dir.z;
+	var pos = camera.position.clone().add( dir.multiplyScalar( distance ) );
+
+}
+
+
+controller = Leap.loop(function(frame) {
+	pontaposx = ponta.position.x;
+	p = controlador.position;
+	controls.update();
+
+
+
+
+
+	if(frame.valid){
+
+if(frame.pointables.length == 5){
+		for(var h = 0; h < frame.hands.length; h++){
+    var hand = frame.hands[h];
+}
+
+			var extendedFingers = 0;
+    for(var f = 0; f < hand.fingers.length; f++){
+        var finger = hand.fingers[f];
+        if(finger.extended) extendedFingers++;
+}
+}
+			if(extendedFingers == 2 ){
+				previousFrame = controller.frame(1);
+				movement = hand.translation(previousFrame);
+				pitchRadians = hand.pitch();
+				yawRadians = hand.yaw();
+				position1 = hand.palmPosition;
+
+
+				controlador.position.x = position1[0]/100;
+
+				if(position1[1] > 60 && position1[1] < 240){
+					var b = ((position1[1]-150)/1.8)/10;
+					controlador.position.y = b;
+
+				}
+				if(position1[2] > -120 && position1[2] < 50){
+					var c = ((position1[2]-(-85))/1.8)/10;
+					controlador.position.z = c;
+				}
+				console.log("2 dedos");
+				if(pegou == 1){
+					parte2.position.copy(controlador.position);
+					tool2 = 1;
+					document.getElementById('tool').innerHTML = "pinça";
+				}
+
+				controlador.rotation.x = pitchRadians;
+				controlador.rotation.y = yawRadians;
+				ponta.position.copy(controlador.position);
+				ponta.rotation.copy(controlador.rotation);
+				/*if(pitchRadians > 0.5){
+				controlador.rotation.x -= Math.PI * 0.002;
+			}else if (pitchRadians < -0.5) {
+				controlador.rotation.x = Math.PI * 0.002;
+			}*/
+				action = 0;
+			}else if(extendedFingers == 1 ){
+				console.log("1 dedo");
+				action = 1;
+
+			}else if(extendedFingers== 3 ){
+					tool1=0;
+					tool2 = 1;
+					document.getElementById('tool').innerHTML = "pinça";
+					console.log("3 dedos");
+			}else if(extendedFingers == 5 ){
+				if(pegou == 1){
+					tool1=0;
+					tool2 = 1;
+					document.getElementById('tool').innerHTML = "pinça";
+				}else{
+					tool2 = 0;
+					tool1 = 1;
+					document.getElementById('tool').innerHTML = "tesoura";
+					console.log("5 dedos");
+				}
+			}
+
+	}
+
+	var originPoint =	controlador.position.clone();
+
+
+	for (var vertexIndex = 0; vertexIndex < controlador.geometry.vertices.length; vertexIndex++)
+	{
+		var localVertex = controlador.geometry.vertices[vertexIndex].clone();
+		var globalVertex = localVertex.applyMatrix4(controlador.matrix );
+		var directionVector = globalVertex.sub( controlador.position );
+
+		var ray = new THREE.Raycaster( originPoint, directionVector.clone().normalize() );
+
+
+
+
+
+
+
+
+    var colisao = ray.intersectObjects(lista1);
+		var colisao1 = ray.intersectObjects(lista2);
+		var colisao2 = ray.intersectObjects(lista3);
+
+		if(colisao.length > 0 && colisao[0].distance < directionVector.length()){
+
+		if(action == 1){
+			if(tool1 == 1){
+				acaotesoura('1');
+
+			}else if(tool2 == 1){
+				acaopinca('1');
+			}
+		}}
+
+		if(colisao1.length > 0 && colisao1[0].distance < directionVector.length()){
+		if(action == 1){
+			if(tool1 == 1){
+				acaotesoura('2');
+			}else if(tool2 == 1){
+				acaopinca('2');
+			}
+		}}
+
+		if(colisao2.length > 0 && colisao2[0].distance < directionVector.length()){
+		if(action == 1){
+			if(tool1 == 1){
+			acaotesoura('3');
+			}else if(tool2 == 1){
+				acaopinca('3');
+			}
+		}}
+
+
+  }
+
+
+
+
+	renderer.render(scene, camera);
+});
+
+function acaotesoura(n){
+	if(n == 1){
+		if(corteparte1 == 0){
+		corteparte1 = 1;
+		setInterval(sangramento, 900);
+	}	else if (corteparte1 == 1) {
+		corteparte1 = 2;
+		}
+	} else if(n == 2){
+		if(corteparte2 == 0){
+		corteparte2 = 1;
+		//setInterval(sangramento, 900);
+	}	else if (corteparte2 == 1) {
+		corteparte2 = 2;
+		console.log("segundo corte na parte2");
+		}
+	} else if(n == 3){
+		if(corteparte3 == 0){
+		corteparte3 = 1;
+		//setInterval(sangramento, 900);
+	}	else if (corteparte3 == 1) {
+		corteparte3 = 2;
+		console.log("segundo corte na parte3");
+		}
+	}
+
+}
+function acaopinca(m){
+	if(m == 1){
+
+		clip = new THREE.Mesh( new THREE.CylinderGeometry( 0.085, 0.085, 0.05, 32 ),
+		new THREE.MeshBasicMaterial( { color: "rgb(		116,	113,	113)" } ));
+		clip.translateX(part1posx);
+		clip.translateY(part1posy);
+		clip.translateZ(part1posz);
+		clip.rotateX(rotation1x);
+		clip.rotateY(rotation1y);
+		clip.rotateZ(rotation1z);
+		scene.add(clip);
+		clipe1++;
+	} else if(m == 2){
+		if(corteparte2 == 2){
+			if(tool2 == 1){
+				pegou = 1;
+				console.log("pegou");
+				if(clipe1 == 0){
+					setInterval(sangramentolateral, 900);
+				}
+			}
+		}else{
+		clip2 = new THREE.Mesh( new THREE.CylinderGeometry( 0.085, 0.085, 0.05, 32 ),
+		new THREE.MeshBasicMaterial( { color: "rgb(	116,	113,	113)" } ));
+		clip2.translateX(part2posx);
+		clip2.translateY(part2posy);
+		clip2.translateZ(part2posz);
+		clip2.rotateX(rotation2x);
+		clip2.rotateY(rotation2y);
+		clip2.rotateZ(rotation2z);
+		scene.add(clip2);
+
+	}
+	} else if(m == 3){
+		clip3 = new THREE.Mesh( new THREE.CylinderGeometry( 0.085, 0.085, 0.05, 32 ),
+		new THREE.MeshBasicMaterial( { color: "rgb( 116,	113,	113)" } ));
+		clip3.translateX(part3posx);
+		clip3.translateY(part3posy);
+		clip3.translateZ(part3posz);
+		clip3.rotateX(rotation2x);
+		clip3.rotateY(rotation2y);
+		clip3.rotateZ(rotation2z);
+		scene.add(clip3);
+		clipe2++;
+
+	}
+}
+
+function sangramento(){
+
+
+		sangue = new THREE.Mesh(
+		new THREE.BoxGeometry( 0.02, 0.02, 0.02),
+		new THREE.MeshBasicMaterial( { color: "rgb(	138,7,7)" } ));
+
+		var r = Math.floor((Math.random() * 10) + 1);
+		if(r <= 5){
+		}else {
+			sangue.material.color.setRGB( 0.585, 0.800, 0.321 );
+		}
+		scene.add(sangue);
+		sangue.position.copy(parte1.position);
+
+	var times = setInterval(caindo, 3);
+
+}
+
+function caindo(){
+		sangue.position.z = sangue.position.z - 0.001;
+ 		if(sangue.position.z <= corpo.position.z){
+ 			scene.remove(sangue);
+}
+}
+
+function sangramentolateral() {
+
+		sanguelateral = new THREE.Mesh(
+		new THREE.BoxGeometry( 0.02, 0.02, 0.02),
+		new THREE.MeshBasicMaterial( { color: "rgb(	138,7,7)" } ));
+
+		var r = Math.floor((Math.random() * 10) + 1);
+		if(r <= 5){
+		}else {
+			sanguelateral.material.color.setRGB( 0.585, 0.800, 0.321 );
+		}
+		scene.add(sanguelateral);
+		sanguelateral.position.copy(parte1.position);
+		sanguelateral.rotation.copy(parte1.rotation);
+	var timesa = setInterval(caindolateral, 3);
+}
+function caindolateral(){
+	sanguelateral.position.x = sanguelateral.position.x + 0.001;
+
+}
+window.onload = init;
